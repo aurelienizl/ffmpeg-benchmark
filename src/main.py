@@ -1,105 +1,129 @@
-# main.py
-
-import csv
-from download import download_test_videos
-from detection import detect_cpu_vendor, check_hw_acceleration
-from transcoding import run_benchmark
-from config import TRANSCODING_SCENARIOS, BITRATES, ITERATION_COUNT, SOURCE_VIDEOS
 import os
+import csv
+import logging
+import argparse
+import platform
+from config import download_videos, VIDEOS
+from vaapi_detect import get_encoding_capabilities
+from software_transcode import transcode_software
+from hardware_transcode import transcode_hardware
+from result_process import process_results
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def clear_console():
+    if platform.system() == "Windows":
+        os.system('cls')
+    else:
+        os.system('clear')
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Benchmark de Transcodage Vidéo avec FFmpeg")
+
+    # Mutually exclusive arguments for software/hardware
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--software', action='store_true', help='Exécute uniquement le benchmark logiciel')
+    group.add_argument('--hardware', action='store_true', help='Exécute uniquement le benchmark matériel')
+
+    # New argument for iteration count
+    parser.add_argument('--iteration-count', type=int, default=1,
+                        help='Nombre d’itérations pour chaque test (défaut: 1)')
+
+    return parser.parse_args()
 
 def main():
-    """
-    Point d'entrée principal du benchmark.
-    """
-    # 1. Téléchargement des vidéos
-    print("=== Téléchargement des vidéos de test ===")
-    downloaded_videos = download_test_videos()
+    args = parse_arguments()
+    clear_console()
 
-    # 2. Détection du CPU et de l'accélération matérielle
-    cpu_vendor = detect_cpu_vendor()
-    hw_accel = check_hw_acceleration(cpu_vendor)
-    print(f"\n=== CPU détecté : {cpu_vendor} ===")
-    print(f"=== Accélération matérielle détectée : {hw_accel} ===\n")
+    logging.info("=== Benchmark de Transcodage Vidéo ===")
 
-    # 3. Calcul du Nombre Total de Tests
-    total_tests = len(SOURCE_VIDEOS) * len(TRANSCODING_SCENARIOS) * len(BITRATES) * ITERATION_COUNT
-    print(f"Total des tests à exécuter : {total_tests}\n")
-    print("Voici les combinaisons de tests :\n")
+    # Always detect CPU capabilities
+    logging.info("=== Détection des Capacités du CPU ===")
+    capabilities = get_encoding_capabilities()
+    logging.info("Capacités d'encodage/décodage détectées :")
+    for key, value in capabilities.items():
+        logging.info(f"  {key}: {'Oui' if value else 'Non'}")
 
-    # Afficher toutes les combinaisons
-    test_number = 1
-    for source_video in SOURCE_VIDEOS:
-        source_codec = source_video["codec"]
-        for scenario in TRANSCODING_SCENARIOS:
-            target_codec, target_container, preset = scenario
-            for bitrate in BITRATES:
-                for iteration in range(ITERATION_COUNT):
-                    print(f"{test_number}. Source Codec: {source_codec}, Target Codec: {target_codec}, "
-                          f"Container: {target_container}, Preset: {preset}, Bitrate: {bitrate}, Iteration: {iteration+1}")
-                    test_number += 1
-
-    confirmation = input("\nVoulez-vous continuer avec ces tests ? (o/n): ").strip().lower()
-    if confirmation != 'o':
-        print("Benchmarking annulé par l'utilisateur.")
+    # If no arguments, just show capabilities and exit
+    if not (args.software or args.hardware):
+        logging.info("Aucun benchmark demandé. Fin du programme.")
         return
 
-    # 4. Exécution des benchmarks
-    results = []
+    # If we are doing either hardware or software, we need the sample videos
+    logging.info("=== Téléchargement des vidéos de test ===")
+    download_videos()
 
-    for source_video in downloaded_videos:
-        print(f"\n=== Traitement du fichier vidéo : {source_video} ===\n")
-        # Trouver le codec source
-        source_codec = next((video["codec"] for video in SOURCE_VIDEOS if video["file"] == source_video), "unknown")
-        for scenario in TRANSCODING_SCENARIOS:
-            target_codec, target_container, preset = scenario
-            for bitrate in BITRATES:
-                for iteration in range(ITERATION_COUNT):
-                    print(f">>> Test: {source_codec} → {target_codec}, container={target_container}, "
-                          f"bitrate={bitrate}, preset={preset}, iteration={iteration+1}")
-                    avg_time, all_times, avg_fps, all_fps = run_benchmark(
-                        source_file=source_video,
-                        target_codec=target_codec,
-                        bitrate=bitrate,
-                        accel_type=hw_accel,
-                        preset=preset,
-                        iteration=ITERATION_COUNT
-                    )
+    all_results = []
 
-                    print(f"\nDurées mesurées: {all_times} (sec)")
-                    print(f"Durée moyenne : {avg_time:.2f} sec")
-                    print(f"FPS moyen : {avg_fps} fps")
-                    print("-" * 40)
+    # --software mode
+    if args.software:
+        logging.info("=== Début du Transcodage Logiciel ===")
+        for video in VIDEOS:
+            source = video["file"]
+            codec = video["codec"]
+            logging.info(f"--- Transcodage logiciel de {source} avec codec {codec} ---")
 
-                    results.append({
-                        "cpu_vendor": cpu_vendor,
-                        "hw_accel": hw_accel,
-                        "source_file": source_video,
-                        "source_codec": source_codec,
-                        "target_codec": target_codec,
-                        "target_container": target_container,
-                        "preset": preset,
-                        "bitrate": bitrate,
-                        "avg_time_s": avg_time,
-                        "all_times_s": all_times,
-                        "avg_fps": avg_fps,
-                        "all_fps": all_fps
-                    })
+            # Pass the iteration count to transcode_software
+            results = transcode_software(source, codec, iteration_count=args.iteration_count)
+            for entry in results:
+                entry["acceleration"] = "software"
+            all_results.extend(results)
 
-    # 5. Sauvegarde des résultats dans un CSV
-    csv_file = "benchmark_results.csv"
-    with open(csv_file, "w", newline="") as f:
-        fieldnames = [
-            "cpu_vendor", "hw_accel", "source_file", "source_codec", "target_codec",
-            "target_container", "preset", "bitrate", "avg_time_s", "all_times_s",
-            "avg_fps", "all_fps"
-        ]
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in results:
-            writer.writerow(row)
+    # --hardware mode
+    elif args.hardware:
+        if not (capabilities.get("h264_encode") or capabilities.get("hevc_encode")):
+            logging.info("=== Encodage matériel non supporté sur ce système ===")
+        else:
+            logging.info("=== Début du Transcodage Matériel ===")
+            for video in VIDEOS:
+                source = video["file"]
+                codec = video["codec"]
+                # Check if hardware is supported for the given codec
+                if codec == "h264" and capabilities.get("h264_encode"):
+                    logging.info(f"--- Transcodage matériel de {source} avec codec {codec} ---")
+                    results = transcode_hardware(source, codec, iteration_count=args.iteration_count)
+                    for entry in results:
+                        entry["acceleration"] = "vaapi"
+                    all_results.extend(results)
+                elif codec == "hevc" and capabilities.get("hevc_encode"):
+                    logging.info(f"--- Transcodage matériel de {source} avec codec {codec} ---")
+                    results = transcode_hardware(source, codec, iteration_count=args.iteration_count)
+                    for entry in results:
+                        entry["acceleration"] = "vaapi"
+                    all_results.extend(results)
+                else:
+                    logging.info(f"--- Transcodage matériel de {source} avec codec {codec} ignoré (non supporté) ---")
 
-    print(f"\nLes résultats de benchmark sont enregistrés dans: {csv_file}")
-    print("Fin du script.")
+    # Save results to CSV
+    if not all_results:
+        logging.warning("Aucun résultat de benchmark à enregistrer.")
+    else:
+        logging.info("=== Enregistrement des Résultats ===")
+        csv_file = "benchmark_results.csv"
+        try:
+            with open(csv_file, "w", newline="") as f:
+                fieldnames = [
+                    "source",
+                    "codec",
+                    "preset",
+                    "bitrate",
+                    "iteration",
+                    "utime_s",
+                    "rtime_s",
+                    "maxrss_kb",
+                    "acceleration"
+                ]
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                for result in all_results:
+                    writer.writerow(result)
+            logging.info(f"Les résultats de benchmark sont enregistrés dans : {csv_file}")
+        except Exception as e:
+            logging.error(f"Erreur lors de l'écriture du fichier CSV : {e}")
+
+        logging.info("=== Traitement des Résultats ===")
+        process_results(csv_file)
+        logging.info("Benchmark terminé.")
 
 if __name__ == "__main__":
     main()
