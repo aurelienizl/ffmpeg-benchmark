@@ -1,5 +1,6 @@
 import os
-import requests
+import shutil
+import subprocess
 
 # Configuration des vidéos à télécharger (H.264 et HEVC)
 VIDEOS = [
@@ -34,26 +35,40 @@ PRESETS = {
 # Bitrates à tester
 BITRATES = ["2M", "4M", "8M"]
 
-# Nombre d'itérations par test
+# Nombre d'itérations par test (peut être remplacé par un paramètre CLI plus tard)
 ITERATION_COUNT = 1
 
 def download_videos():
     """
-    Télécharge les vidéos de test si elles ne sont pas déjà présentes.
+    Télécharge les vidéos de test si elles ne sont pas déjà présentes,
+    en utilisant `wget` ou `curl`.
     """
     os.makedirs("samples", exist_ok=True)
+
+    # Vérifier si `wget` est disponible, sinon essayer `curl`
+    wget_path = shutil.which("wget")
+    curl_path = shutil.which("curl")
+
+    if not wget_path and not curl_path:
+        print("Erreur: ni wget ni curl n'est installé. Impossible de télécharger les fichiers.")
+        return
+
     for video in VIDEOS:
         if not os.path.exists(video["file"]):
             print(f"Téléchargement de {video['file']}...")
+
+            # Construire la commande en fonction de wget ou curl
+            if wget_path:
+                # wget -O <destination> <url>
+                cmd = ["wget", "-O", video["file"], video["url"]]
+            else:
+                # curl -L -o <destination> <url>
+                cmd = ["curl", "-L", "-o", video["file"], video["url"]]
+
             try:
-                response = requests.get(video["url"], stream=True)
-                response.raise_for_status()
-                with open(video["file"], "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            f.write(chunk)
+                subprocess.run(cmd, check=True)
                 print(f"Download terminé: {video['file']}")
-            except requests.exceptions.RequestException as e:
+            except subprocess.CalledProcessError as e:
                 print(f"Erreur lors du téléchargement de {video['file']}: {e}")
         else:
             print(f"Fichier déjà présent: {video['file']}")
