@@ -10,9 +10,10 @@
 #define MAX_PROFILES 32
 #define MAX_ENTRYPOINTS 10
 
+// Function prototypes
 int initialize_vaapi(const char *device, VADisplay *va_dpy, int *major, int *minor, const char **vendor);
-void list_profiles(VADisplay va_dpy, FILE *json_file, int json_enabled, int is_nvidia);
-int detect_nvidia(const char *vendor);
+void list_profiles(VADisplay va_dpy, FILE *json_file, int json_enabled, int is_nvidia, int is_intel);
+int detect_gpu_vendor(const char *vendor);
 void print_usage(const char *program_name);
 
 int main(int argc, char **argv)
@@ -39,7 +40,10 @@ int main(int argc, char **argv)
     if (initialize_vaapi(argv[1], &va_dpy, &major, &minor, &vendor) != 0)
         return 1;
 
-    int is_nvidia = detect_nvidia(vendor);
+    // Detect GPU type
+    int gpu_type = detect_gpu_vendor(vendor);
+    int is_nvidia = (gpu_type == 1);
+    int is_intel = (gpu_type == 2);
 
     FILE *json_file = NULL;
     if (json_enabled)
@@ -55,7 +59,7 @@ int main(int argc, char **argv)
                 major, minor, vendor ? vendor : "Unknown");
     }
 
-    list_profiles(va_dpy, json_file, json_enabled, is_nvidia);
+    list_profiles(va_dpy, json_file, json_enabled, is_nvidia, is_intel);
 
     if (json_enabled)
     {
@@ -106,20 +110,31 @@ int initialize_vaapi(const char *device, VADisplay *va_dpy, int *major, int *min
     return 0;
 }
 
-// Function to detect if the system is using an NVIDIA GPU
-int detect_nvidia(const char *vendor)
+// Function to detect GPU vendor (Intel/NVIDIA)
+int detect_gpu_vendor(const char *vendor)
 {
-    if (vendor && (strstr(vendor, "NVIDIA") || strstr(vendor, "NVDEC")))
+    if (vendor)
     {
-        printf(COLOR_YELLOW "⚠️  WARNING: Detected NVIDIA GPU. VAAPI only supports decoding on NVIDIA.\n" COLOR_RESET);
-        printf(COLOR_YELLOW "⚠️  Use NVENC for hardware acceleration:\n\n" COLOR_RESET);
-        return 1;
+        if (strstr(vendor, "NVIDIA") || strstr(vendor, "NVDEC"))
+        {
+            printf("⚠️  WARNING: Detected NVIDIA GPU. VAAPI only supports decoding on NVIDIA.\n");
+            printf("⚠️  Use FFmpeg with NVENC for encoding:\n");
+            printf("    ffmpeg -hwaccel cuda -i input.mp4 -c:v h264_nvenc -preset fast output.mp4\n\n");
+            return 1;
+        }
+        if (strstr(vendor, "Intel") || strstr(vendor, "iHD"))
+        {
+            printf("✅ Detected Intel GPU (Quick Sync Video Supported).\n");
+            printf("ℹ️  Use FFmpeg with QSV for best performance:\n");
+            printf("    ffmpeg -hwaccel qsv -i input.mp4 -c:v h264_qsv -preset fast output.mp4\n\n");
+            return 2;
+        }
     }
     return 0;
 }
 
-// Function to list available VAAPI profiles and their entrypoints
-void list_profiles(VADisplay va_dpy, FILE *json_file, int json_enabled, int is_nvidia)
+// Function to list VAAPI profiles and entrypoints, with Intel & NVIDIA detection
+void list_profiles(VADisplay va_dpy, FILE *json_file, int json_enabled, int is_nvidia, int is_intel)
 {
     VAProfile profiles[MAX_PROFILES] = {VAProfileNone};
     int num_profiles = 0;
@@ -130,7 +145,7 @@ void list_profiles(VADisplay va_dpy, FILE *json_file, int json_enabled, int is_n
         return;
     }
 
-    int first_profile = 1; // Flag to format JSON correctly (for the trailing comma)
+    int first_profile = 1;
 
     printf("VAAPI Supported Profiles and Entrypoints:\n");
 
@@ -178,7 +193,7 @@ void list_profiles(VADisplay va_dpy, FILE *json_file, int json_enabled, int is_n
                     fprintf(json_file, "\"%s\"", get_entrypoint_name(entrypoints[j]));
                 }
 
-                if (entrypoints[j] == VAEntrypointVLD || entrypoints[j] == VAEntrypointEncSlice)
+                if (entrypoints[j] == VAEntrypointVLD || entrypoints[j] == VAEntrypointEncSlice || entrypoints[j] == VAEntrypointEncSliceLP)
                     can_transcode++;
             }
         }
@@ -188,11 +203,7 @@ void list_profiles(VADisplay va_dpy, FILE *json_file, int json_enabled, int is_n
             fprintf(json_file, "] }");
         }
 
-        if (is_nvidia)
-        {
-            printf(COLOR_YELLOW "      ⚠️  NVIDIA VAAPI supports only decoding.\n" COLOR_RESET);
-        }
-        else if (can_transcode >= 2)
+        if (can_transcode >= 2)
         {
             printf(COLOR_GREEN "      ✅ TRANSCODING SUPPORTED\n" COLOR_RESET);
         }
