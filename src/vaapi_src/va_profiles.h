@@ -3,7 +3,12 @@
 
 #include <va/va.h>
 
-// Function to get profile names
+// 4 Terminal Output
+#define COLOR_GREEN "\033[1;32m"
+#define COLOR_RED "\033[1;31m"
+#define COLOR_YELLOW "\033[1;33m"
+#define COLOR_RESET "\033[0m"
+
 const char *get_profile_name(VAProfile profile)
 {
     switch (profile)
@@ -62,16 +67,15 @@ const char *get_profile_name(VAProfile profile)
         return "AV1 Profile 0";
     case VAProfileAV1Profile1:
         return "AV1 Profile 1";
-    case VAProfileNone:
-        return "Video Processing (Post-Processing)";
     case 5:
         return "H.264 Extended (Possibly Deprecated)";
+    case VAProfileNone:
+        return "Video Processing (Post-Processing)";
     default:
         return "Unknown Profile";
     }
 }
 
-// Function to get entrypoint names
 const char *get_entrypoint_name(VAEntrypoint entrypoint)
 {
     switch (entrypoint)
