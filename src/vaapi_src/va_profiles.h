@@ -84,11 +84,16 @@ const char *get_entrypoint_name(VAEntrypoint entrypoint)
         return "Decoding (VLD)";
     case VAEntrypointEncSlice:
         return "Encoding (Slice)";
+    case VAEntrypointEncSliceLP:  
+        return "Encoding (Slice LP)";
+    case VAEntrypointEncPicture:
+        return "Encoding (Picture)";
     case VAEntrypointVideoProc:
         return "Video Processing";
     default:
         return "Unknown Entrypoint";
     }
 }
+
 
 #endif // VA_PROFILES_H
