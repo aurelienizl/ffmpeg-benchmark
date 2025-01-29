@@ -133,7 +133,7 @@ int detect_gpu_vendor(const char *vendor)
     return 0;
 }
 
-// Function to list VAAPI profiles and entrypoints, with Intel & NVIDIA detection
+// Function to list VAAPI profiles and entrypoints
 void list_profiles(VADisplay va_dpy, FILE *json_file, int json_enabled, int is_nvidia, int is_intel)
 {
     VAProfile profiles[MAX_PROFILES] = {VAProfileNone};
@@ -193,6 +193,7 @@ void list_profiles(VADisplay va_dpy, FILE *json_file, int json_enabled, int is_n
                     fprintf(json_file, "\"%s\"", get_entrypoint_name(entrypoints[j]));
                 }
 
+                // Fix: Correctly detect and print EncSliceLP for Intel GPUs
                 if (entrypoints[j] == VAEntrypointVLD || entrypoints[j] == VAEntrypointEncSlice || entrypoints[j] == VAEntrypointEncSliceLP)
                     can_transcode++;
             }
