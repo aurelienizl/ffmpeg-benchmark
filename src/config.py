@@ -2,16 +2,19 @@ import os
 import shutil
 import subprocess
 
+
 # Configuration des vidéos à télécharger (H.264 et HEVC)
+# https://test-videos.co.uk/vids/bigbuckbunny/mp4/h265/1080/Big_Buck_Bunny_1080_10s_30MB.mp4
+# https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4
 VIDEOS = [
     {
-        "url": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/1080/Big_Buck_Bunny_1080_10s_30MB.mp4",
-        "file": "samples/Big_Buck_Bunny_h264_1080_10s_30MB.mp4",
+        "url": "https://git.server-paris.synology.me:3001/aurelienizl/public/raw/branch/main/movies/x264-1080p-30fps-normal.mp4",
+        "file": "samples/x264.mp4",
         "codec": "h264"
     },
     {
-        "url": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h265/1080/Big_Buck_Bunny_1080_10s_30MB.mp4",
-        "file": "samples/Big_Buck_Bunny_h265_1080_10s_30MB.mp4",
+        "url": "https://git.server-paris.synology.me:3001/aurelienizl/public/raw/branch/main/movies/x265-1080p-30fps-normal.mp4",
+        "file": "samples/x265.mp4",
         "codec": "hevc"
     }
 ]
